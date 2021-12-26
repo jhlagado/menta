@@ -487,46 +487,46 @@ alt:                                ;= 11
         JP  (HL)                    ; 4t    Jump to routine
 
 and_:        
-        JP      (IY)        
+        JP (IY)        
                             ; 63t
 or_: 		 
-        JP      (IY)        
+        JP (IY)        
 
 xor_:		 
-        JP      (IY)        
+        JP (IY)        
 
 inv_:						    
-        JP      (IY)        
+        JP (IY)        
    
 add_:                          ; Add the top 2 members of the stack
-        JP      (IY)        
+        JP (IY)        
 
 arrDef_:    
-        JP      (IY)        
+        JP (IY)        
 
 arrEnd_:    
-        JP      (IY)        
+        JP (IY)        
 
 begin_:     
-        JP      (IY)        
+        JP (IY)        
 
 call_:
-        JP      (IY)        
+        JP (IY)        
 
 def_:   
-        JP      (IY)        
+        JP (IY)        
 
 hdot_:                              ; print hexadecimal
-        JP      (IY)        
+        JP (IY)        
 
 dot_:       
-        JP      (IY)        
+        JP (IY)        
 
 drop_:                      ; Discard the top member of the stack
-        JP      (IY)        
+        JP (IY)        
 
 dup_:        
-        JP      (IY)        
+        JP (IY)        
 
 etx_:
 etx:
@@ -549,19 +549,19 @@ exit_:
         RET
         
 fetch_:                     ; Fetch the value from the address placed on the top of the stack      
-        JP      (IY)        
+        JP (IY)        
 
 hex_:   
-        JP      (IY)        
+        JP (IY)        
 
 nop_:   
         JP NEXT                 ; hardwire white space to always go to NEXT (important for arrays)
 
 num_:   
-        JP      (IY)        
+        JP num        
 
 over_:  
-        JP      (IY)        
+        JP (IY)        
     
 ret_:
         EXX
@@ -571,49 +571,49 @@ ret_:
         JP (IY)             
 
 store_:                     ; Store the value at the address placed on the top of the stack
-        JP      (IY)        
+        JP (IY)        
 
 swap_:        
-        JP      (IY)        
+        JP (IY)        
 
 shl_:   
-        JP      (IY)        
+        JP (IY)        
     
 shr_:    
-        JP      (IY)        
+        JP (IY)        
 
 neg_:   
-        JP      (IY)        
+        JP (IY)        
     
 sub_:       				    ; Subtract the value 2nd on stack from top of stack 
-        JP      (IY)        
+        JP (IY)        
                                 ; 58t
 eq_:    
-        JP      (IY)        
+        JP (IY)        
 
 getRef_:    
-        JP      (IY)        
+        JP (IY)        
 
 gt_:    
-        JP      (IY)        
+        JP (IY)        
         
 lt_:    
-        JP      (IY)        
+        JP (IY)        
         
 var_:
-        JP      (IY)        
+        JP (IY)        
         
 div_:   
-        JP      (IY)        
+        JP (IY)        
 
 mul_:   
-        JP      (IY)        
+        JP (IY)        
 
 again_:     
-        JP      (IY)        
+        JP (IY)        
 
 str_:                       
-        JP      (IY)        
+        JP (IY)        
 
 ;*******************************************************************
 ; Page 5 primitive routines 
@@ -627,81 +627,81 @@ str_:
 page6:
 
 cArrDef_:                   ; define a byte array
-        JP      (IY)        
+        JP (IY)        
 
 cFetch_:
-        JP      (IY)        
+        JP (IY)        
 anop_:
-        JP      (IY)        ; 8t
+        JP (IY)        ; 8t
                             ; 49t 
 charCode_:
-        JP      (IY)        
+        JP (IY)        
 
 comment_:
-        JP      (IY)        
+        JP (IY)        
 
 cStore_:	  
-        JP      (IY)        
+        JP (IY)        
                             ; 48t
 depth_:
-        JP      (IY)        
+        JP (IY)        
 
 emit_:
-        JP      (IY)        
+        JP (IY)        
 
 ifte_:
-        JP      (IY)        
+        JP (IY)        
 
 exec_:
-        JP      (IY)        
+        JP (IY)        
 
 go_:
-        JP      (IY)        
+        JP (IY)        
 
 endGroup_:
-        JP      (IY)        
+        JP (IY)        
 
 group_:
-        JP      (IY)        
+        JP (IY)        
 
 sysVar_:
-        JP      (IY)        
+        JP (IY)        
 
 i_:
-        JP      (IY)        
+        JP (IY)        
 
 incr_:
-        JP      (IY)        
+        JP (IY)        
 
 inPort_:
-        JP      (IY)        
+        JP (IY)        
 
 j_:
-        JP      (IY)        
+        JP (IY)        
 
 key_:
-        JP      (IY)        
+        JP (IY)        
 
 newln_:
-        JP      (IY)        
+        JP (IY)        
 
 outPort_:
-        JP      (IY)        
+        JP (IY)        
 
 rot_:                               
-        JP      (IY)        
+        JP (IY)        
 
 sign_:
-        JP      (IY)        
+        JP (IY)        
 
 break_:
-        JP      (IY)        
+        JP (IY)        
 
 printStk_:
-        JP      (IY)        
+        JP (IY)        
 
 editDef_:
-        JP      (IY)        
+        JP (IY)        
 
 
 ;*******************************************************************
@@ -794,7 +794,7 @@ rpop:                               ; 11
         EX DE,HL
         RET
 
-ENTER:                          ; 9
+enter:                          ; 9
         EXX
         LD HL,BC
         CALL rpush              ; save Instruction Pointer
@@ -803,3 +803,46 @@ ENTER:                          ; 9
         EXX
         JP  (IY)                ; Execute code from User def
 
+; ********************************************************************************
+; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
+; Read the first character. 
+;			
+; Number characters ($30 to $39) are converted to digits by subtracting $30
+; and then added into the L register. (HL forms a 16-bit accumulator)
+; Fetch the next character, if it is a number, multiply contents of HL by 10
+; and then add in the next digit. Repeat this until a non-number character is 
+; detected. Add in the final digit so that HL contains the converted number.
+; Push HL onto the stack and proceed to the dispatch routine.
+; ********************************************************************************
+         
+num:                            ;= 23
+		LD HL,0			    	; Clear HL to accept the number
+		LD A,(BC)				; Get the character which is a numeral
+        
+num1:                           ; corrected KB 24/11/21
+
+        SUB $30                 ; Form decimal digit
+        ADD A,L                 ; Add into bottom of HL
+        LD  L,A                 ; 
+        XOR A                   ; Clear A
+        ADC	A,H	                ; Add with carry H-reg
+	    LD	H,A	                ; Put result in H-reg
+      
+        INC BC                  ; Increment IP
+        LD A, (BC)              ; and get the next character
+        CP $30                  ; Less than $30
+        JR C,num2               ; Not a number / end of number
+        CP $3A                  ; Greater or equal to $3A
+        JR NC,num2              ; Not a number / end of number
+                                ; Multiply digit(s) in HL by 10
+        ADD HL,HL               ; 2X
+        LD  E,L                 ; LD DE,HL
+        LD  D,H                 ; 
+        ADD HL,HL               ; 4X
+        ADD HL,HL               ; 8X
+        ADD HL,DE               ; 2X  + 8X  = 10X
+        JR  num1
+num2:
+        DEC BC
+        PUSH HL                 ; Put the number on the stack
+        JP (IY)                 ; and process the next character
