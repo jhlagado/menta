@@ -47,8 +47,6 @@ iSysVars:
         DW HEAP                 ; h vHeapPtr
 
 initialize:
-        LD IX,RSTACK
-        LD IY,NEXT			    ; IY provides a faster jump to NEXT
         LD HL,iSysVars
         LD DE,sysVars
         LD BC,8 * 2
@@ -62,6 +60,10 @@ init1:
         LD (HL),msb(empty_)
         INC HL
         DJNZ init1
+        EXX
+        LD DE,RSTACK
+        EXX
+        LD IY,NEXT			    ; IY provides a faster jump to NEXT
         RET
 
 macro:                          ; 25
@@ -145,8 +147,10 @@ waitchar3:
 
 waitchar4:    
         LD (vTIBPtr),BC
+        EXX
         LD BC,TIB               ; Instructions stored on heap at address HERE
         DEC BC
+        EXX
                                 ; Drop into the NEXT and dispatch routines
 
 ; ********************************************************************************
@@ -170,7 +174,6 @@ waitchar4:
 ; Instruction Pointer IP BC is incremented
 ;
 ; *********************************************************************************
-        EXX
 NEXT:                               ; 9 
         EXX
         INC BC                      ; 6t    Increment the IP
@@ -774,17 +777,21 @@ printStr2:
         RET
         
 rpush:                              ; 11
-        DEC IX                  
-        LD (IX+0),H
-        DEC IX
-        LD (IX+0),L
+        EX DE,HL
+        DEC HL                  
+        LD (HL),D
+        DEC HL
+        LD (HL),E
+        EX DE,HL
         RET
 
 rpop:                               ; 11
-        LD L,(IX+0)         
-        INC IX              
-        LD H,(IX+0)
-        INC IX                  
+        EX DE,HL
+        LD E,(HL)         
+        INC HL              
+        LD D,(HL)
+        INC HL                  
+        EX DE,HL
         RET
 
 ENTER:                          ; 9
