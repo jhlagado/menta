@@ -19,8 +19,8 @@
         NUMGRPS     EQU 5
         GRPSIZE     EQU $40
         
-        varsOfs   EQU ((VARS - mintVars)/2) + "a"
-        sysvarsOfs   EQU ((sysVars - mintVars)/2) + "a"
+        varsOfs     EQU ((VARS - mintVars)/2) - "a"
+        sysvarsOfs  EQU ((sysVars - mintVars)/2) -"a" 
 
 
 ; **************************************************************************
@@ -36,7 +36,6 @@ start:
         .cstr "MINT V1.1\r\n"
         JP interpret
 
-        
 ; ***********************************************************************
 ; Initial values for user mintVars		
 ; ***********************************************************************		
@@ -188,6 +187,21 @@ NEXT:                               ; 9
         LD L,(HL)                   ; 7t    get low jump address
         LD H,msb(codePage)             ; 7t    Load H with the 1st page address
         JP (HL)                     ; 4t    Jump to routine
+
+; ARRAY compilation routine
+compNEXT:                       ; 19
+        LD HL,(vHeapPtr)        ; load heap ptr
+        LD (HL),E               ; store lsb
+        LD A,(vByteMode)
+        INC HL          
+        OR A
+        JR NZ,compNext1
+        LD (HL),D
+        INC HL
+compNext1:
+        POP DE
+        LD (vHeapPtr),HL        ; save heap ptr
+        JR NEXT
 
 ; **************************************************************************
 ; Macros must be written in Mint and end with ; 
@@ -532,10 +546,19 @@ add_:
         JP (IY)           
 
 arrDef_:    
-        JP (IY)        
+arrDef:                     ;= 18
+        LD A,FALSE
+arrDef1:      
+        LD IY,compNEXT
+        LD (vByteMode),A
+        EXX
+        LD HL,(vHeapPtr)    ; HL = heap ptr
+        CALL rpush          ; save start of array \[  \]
+        EXX
+        JP NEXT             ; hardwired to NEXT
 
 arrEnd_:    
-        JP (IY)        
+        JP arrEnd        
 
 begin_:     
         JP (IY)        
@@ -605,6 +628,10 @@ num_:
         JP num        
 
 over_:  
+        POP HL                  ; HL=NOS
+        PUSH HL
+        PUSH DE
+        EX DE,HL                
         JP (IY)        
     
 ret_:
@@ -624,7 +651,10 @@ store_:
         JP (IY)         
 
 swap_:        
-        JP (IY)        
+        EX DE,HL
+        EX (SP),HL
+        EX DE,HL
+        JP (IY)
 
 shl_:   
         JP (IY)        
@@ -680,7 +710,7 @@ var1:
         EXX
         LD H,B
         LD L,C
-        SUB (HL)
+        ADD A,(HL)
         ADD A,A
         EXX
         PUSH DE                 ; push TOS
@@ -731,23 +761,37 @@ mul2:
         .align $100
 altCodePage:
 
-cArrDef_:                   ; define a byte array
-        JP (IY)        
+cArrDef_:                   
+        LD A,TRUE
+        JP arrDef1
 
 cFetch_:
-        JP (IY)        
-anop_:
-        JP (IY)        ; 8t
-                            ; 49t 
+        EX DE,HL
+        LD D,0         
+        LD E,(HL)      
+aNop_:
+        JP (IY)             
+                             
 charCode_:
-        JP (IY)        
+        EXX
+        INC BC
+        LD A,(BC)
+        EXX
+        PUSH DE
+        LD D,0
+        LD E,A
+        JP (IY)
 
 comment_:
         JP (IY)        
 
 cStore_:	  
-        JP (IY)        
-                            ; 48t
+        EX DE,HL           
+        POP DE           
+        LD (HL),E
+        POP DE
+        JP (IY)         
+                            
 depth_:
         JP (IY)        
 
@@ -842,6 +886,29 @@ editDef_:
 ; Commands continued
 ;*******************************************************************
 
+; end a word array
+arrEnd:                     ;= 27
+        EXX
+        CALL rpop               ; DE = start of array
+        PUSH HL
+        EXX
+        EX DE,HL                ; HL=TOS
+        EX (SP),HL              ; (SP)=TOS HL=start of array
+        EX DE,HL                ; DE=start of array
+        LD HL,(vHeapPtr)        ; HL = heap ptr
+        OR A
+        SBC HL,DE               ; bytes on heap 
+        LD A,(vByteMode)
+        OR A
+        JR NZ,arrEnd2
+        SRL H                   ; BC = m words
+        RR L
+arrEnd2:
+        PUSH DE                 ; (SP)=start of array
+        EX DE,HL                ; DE=length 
+        LD IY,NEXT              ; restore IY
+        JP (IY)                 ; hardwired to NEXT
+
 ; ********************************************************************************
 ; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
 ; Read the first character. 
@@ -855,6 +922,7 @@ editDef_:
 ; ********************************************************************************
          
 num:                            ;= 
+        PUSH DE
 		LD HL,0			    	; Clear HL to accept the number
         EXX
 		LD A,(BC)				; Get the character which is a numeral
@@ -864,7 +932,7 @@ num1:                           ; corrected KB 24/11/21
         SUB $30                 ; Form decimal digit
         ADD A,L                 ; Add into bottom of HL
         LD  L,A                 ; 
-        XOR A                   ; Clear A
+        LD A,0                  ; Clear A
         ADC	A,H	                ; Add with carry H-reg
 	    LD	H,A	                ; Put result in H-reg
       
@@ -879,8 +947,7 @@ num1:                           ; corrected KB 24/11/21
         JR NC,num2              ; Not a number / end of number
                                 ; Multiply digit(s) in HL by 10
         ADD HL,HL               ; 2X
-        LD  E,L                 ; LD DE,HL 
-        LD  D,H                 ; 
+        LD  DE,HL               ; LD DE,HL 
         ADD HL,HL               ; 4X
         ADD HL,HL               ; 8X
         ADD HL,DE               ; 2X  + 8X  = 10X
@@ -889,12 +956,8 @@ num2:
         EXX
         DEC BC
         EXX
-        PUSH HL                 ; Put the number on the stack
         EX DE,HL                ; NOS in HL
-        EX (SP),HL              ; TOS in HL
-        EX DE,HL                ; TOS in DE    
         JP (IY)                 ; and process the next character
-
 
 ;*******************************************************************
 ; Subroutines
@@ -992,7 +1055,6 @@ printdec2:
         SBC HL,DE
         JP putchar
 
-;TODO rewrite BC increments so we dont need to decrement at end
 def:                            ; Create a colon definition
         EXX
         INC BC
