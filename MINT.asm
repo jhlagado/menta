@@ -18,6 +18,10 @@
 
         NUMGRPS     EQU 5
         GRPSIZE     EQU $40
+        
+        varsOfs   EQU ((VARS - mintVars)/2) + "a"
+        sysvarsOfs   EQU ((sysVars - mintVars)/2) + "a"
+
 
 ; **************************************************************************
 ; Page 0  Initialisation
@@ -540,15 +544,17 @@ etx1:
 exit_:
         EXX
         INC BC
-        LD DE,BC                
-        CALL rpop               ; Restore Instruction pointer
+        PUSH BC
+        CALL rpop               
         LD BC,HL
-        EX DE,HL
-        PUSH HL
         EXX
         RET
         
-fetch_:                     ; Fetch the value from the address placed on the top of the stack      
+fetch_:                           
+        EX DE,HL
+        LD E,(HL)      
+        INC HL          
+        LD D,(HL)      
         JP (IY)        
 
 hex_:   
@@ -570,8 +576,14 @@ ret_:
         EXX
         JP (IY)             
 
-store_:                     ; Store the value at the address placed on the top of the stack
-        JP (IY)        
+store_:                     
+        EX DE,HL                ; HL = TOS
+        POP DE                  ; DE = NOS
+        LD (HL),E       
+        INC HL           
+        LD (HL),D       
+        POP DE                  ; DE = TOS
+        JP (IY)         
 
 swap_:        
         JP (IY)        
@@ -601,7 +613,18 @@ lt_:
         JP (IY)        
         
 var_:
-        JP (IY)        
+        LD A,varsOfs  
+var1:
+        EXX
+        LD H,B
+        LD L,C
+        SUB (HL)
+        ADD A,A
+        EXX
+        PUSH DE                 ; push TOS
+        LD E,A                  ; TOS = ptr to var
+        LD D,msb(mintVars)
+        JP (IY)
         
 div_:   
         JP (IY)        
@@ -653,10 +676,23 @@ ifte_:
         JP (IY)        
 
 exec_:
-        JP (IY)        
+        CALL exec1
+        JP (IY)
+exec1:
+        POP HL                  ; HL = RET address    
+        EX (SP),HL              ; HL = NOS, (SP) = RET
+        EX DE,HL                ; HL = TOS, DE = NOS
+        JP (HL)                 ; JP to machine code, RET will return to exec_
 
 go_:
-        JP (IY)        
+        PUSH DE                 ; push TOS
+        EXX
+        LD HL,BC
+        CALL rpush              ; save Instruction Pointer
+        POP BC                  ; pop TOS
+        DEC BC                  ; decrement to just before 
+        EXX
+        JP  (IY)                ; Execute code from User def
 
 endGroup_:
         JP (IY)        
@@ -665,7 +701,8 @@ group_:
         JP (IY)        
 
 sysVar_:
-        JP (IY)        
+        LD A,sysvarsOfs  
+        JP var1
 
 i_:
         JP (IY)        
@@ -707,49 +744,7 @@ editDef_:
 ;*******************************************************************
 ; Page 5 primitive routines continued
 ;*******************************************************************
-; **************************************************************************             
-; calculate nesting value
-; A is char to be tested, 
-; E is the nesting value (initially 0)
-; E is increased by ( and [ 
-; E is decreased by ) and ]
-; E has its bit 7 toggled by `
-; limited to 127 levels
-; **************************************************************************             
 
-nesting:                        ;= 44
-        CP '`'
-        JR NZ,nesting1
-        BIT 7,E
-        JR Z,nesting1a
-        RES 7,E
-        RET
-nesting1a: 
-        SET 7,E
-        RET
-nesting1:
-        BIT 7,E             
-        RET NZ             
-        CP ':'
-        JR Z,nesting2
-        CP '['
-        JR Z,nesting2
-        CP '('
-        JR NZ,nesting3
-nesting2:
-        INC E
-        RET
-nesting3:
-        CP ';'
-        JR Z,nesting4
-        CP ']'
-        JR Z,nesting4
-        CP ')'
-        RET NZ
-nesting4:
-        DEC E
-        RET 
-        
 crlf:                               ; 18
         call printStr
         .cstr "\r\n"
@@ -794,7 +789,7 @@ rpop:                               ; 11
         EX DE,HL
         RET
 
-enter:                          ; 9
+enter:                          ;= 9
         EXX
         LD HL,BC
         CALL rpush              ; save Instruction Pointer
@@ -802,6 +797,7 @@ enter:                          ; 9
         DEC BC
         EXX
         JP  (IY)                ; Execute code from User def
+
 
 ; ********************************************************************************
 ; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
@@ -815,10 +811,10 @@ enter:                          ; 9
 ; Push HL onto the stack and proceed to the dispatch routine.
 ; ********************************************************************************
          
-num:                            ;= 23
+num:                            ;= 
+        EXX
 		LD HL,0			    	; Clear HL to accept the number
 		LD A,(BC)				; Get the character which is a numeral
-        
 num1:                           ; corrected KB 24/11/21
 
         SUB $30                 ; Form decimal digit
@@ -845,4 +841,52 @@ num1:                           ; corrected KB 24/11/21
 num2:
         DEC BC
         PUSH HL                 ; Put the number on the stack
+        EXX
+        EX DE,HL                ; NOS in HL
+        EX (SP),HL              ; TOS in HL
+        EX DE,HL                ; TOS in DE    
         JP (IY)                 ; and process the next character
+
+; **************************************************************************             
+; calculate nesting value
+; A is char to be tested, 
+; E is the nesting value (initially 0)
+; E is increased by ( and [ 
+; E is decreased by ) and ]
+; E has its bit 7 toggled by `
+; limited to 127 levels
+; **************************************************************************             
+
+nesting:                        ;= 44
+        CP '`'
+        JR NZ,nesting1
+        BIT 7,E
+        JR Z,nesting1a
+        RES 7,E
+        RET
+nesting1a: 
+        SET 7,E
+        RET
+nesting1:
+        BIT 7,E             
+        RET NZ             
+        CP ':'
+        JR Z,nesting2
+        CP '['
+        JR Z,nesting2
+        CP '('
+        JR NZ,nesting3
+nesting2:
+        INC E
+        RET
+nesting3:
+        CP ';'
+        JR Z,nesting4
+        CP ']'
+        JR Z,nesting4
+        CP ')'
+        RET NZ
+nesting4:
+        DEC E
+        RET 
+        
