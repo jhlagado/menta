@@ -33,7 +33,7 @@ start:
         LD SP,DSTACK
         CALL initialize
         CALL printStr
-        .cstr "MINT V1.0\r\n"
+        .cstr "MINT V1.1\r\n"
         JP interpret
 
         
@@ -601,7 +601,16 @@ sub_:       				    ; Subtract the value 2nd on stack from top of stack
         JP (IY)        
                                 ; 58t
 eq_:    
-        JP (IY)        
+        POP HL                  ; DE=TOS HL=NOS
+        OR A                    ; reset the carry flag
+        SBC HL,DE               ; NOS-TOS if equal HL=0
+        EX DE,HL
+        JR Z,eq1
+eq0:                            ; if false
+        LD DE,-1
+eq1:                            ; if true
+        INC DE
+        JP (IY) 
 
 getRef_:    
         JP (IY)        
@@ -740,9 +749,61 @@ printStk_:
 editDef_:
         JP (IY)        
 
+;*******************************************************************
+; Commands continued
+;*******************************************************************
+
+; ********************************************************************************
+; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
+; Read the first character. 
+;			
+; Number characters ($30 to $39) are converted to digits by subtracting $30
+; and then added into the L register. (HL forms a 16-bit accumulator)
+; Fetch the next character, if it is a number, multiply contents of HL by 10
+; and then add in the next digit. Repeat this until a non-number character is 
+; detected. Add in the final digit so that HL contains the converted number.
+; Push HL onto the stack and proceed to the dispatch routine.
+; ********************************************************************************
+         
+num:                            ;= 
+        EXX
+		LD HL,0			    	; Clear HL to accept the number
+		LD A,(BC)				; Get the character which is a numeral
+num1:                           ; corrected KB 24/11/21
+
+        SUB $30                 ; Form decimal digit
+        ADD A,L                 ; Add into bottom of HL
+        LD  L,A                 ; 
+        XOR A                   ; Clear A
+        ADC	A,H	                ; Add with carry H-reg
+	    LD	H,A	                ; Put result in H-reg
+      
+        INC BC                  ; Increment IP
+        LD A, (BC)              ; and get the next character
+        CP $30                  ; Less than $30
+        JR C,num2               ; Not a number / end of number
+        CP $3A                  ; Greater or equal to $3A
+        JR NC,num2              ; Not a number / end of number
+                                ; Multiply digit(s) in HL by 10
+        ADD HL,HL               ; 2X
+        LD  E,L                 ; LD DE,HL
+        LD  D,H                 ; 
+        ADD HL,HL               ; 4X
+        ADD HL,HL               ; 8X
+        ADD HL,DE               ; 2X  + 8X  = 10X
+        JR  num1
+num2:
+        DEC BC
+        PUSH HL                 ; Put the number on the stack
+        EXX
+        EX DE,HL                ; NOS in HL
+        EX (SP),HL              ; TOS in HL
+        EX DE,HL                ; TOS in DE    
+        JP (IY)                 ; and process the next character
+
 
 ;*******************************************************************
-; Page 5 primitive routines continued
+; Subroutines
 ;*******************************************************************
 
 crlf:                               ; 18
@@ -798,54 +859,28 @@ enter:                          ;= 9
         EXX
         JP  (IY)                ; Execute code from User def
 
-
-; ********************************************************************************
-; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
-; Read the first character. 
-;			
-; Number characters ($30 to $39) are converted to digits by subtracting $30
-; and then added into the L register. (HL forms a 16-bit accumulator)
-; Fetch the next character, if it is a number, multiply contents of HL by 10
-; and then add in the next digit. Repeat this until a non-number character is 
-; detected. Add in the final digit so that HL contains the converted number.
-; Push HL onto the stack and proceed to the dispatch routine.
-; ********************************************************************************
-         
-num:                            ;= 
-        EXX
-		LD HL,0			    	; Clear HL to accept the number
-		LD A,(BC)				; Get the character which is a numeral
-num1:                           ; corrected KB 24/11/21
-
-        SUB $30                 ; Form decimal digit
-        ADD A,L                 ; Add into bottom of HL
-        LD  L,A                 ; 
-        XOR A                   ; Clear A
-        ADC	A,H	                ; Add with carry H-reg
-	    LD	H,A	                ; Put result in H-reg
-      
-        INC BC                  ; Increment IP
-        LD A, (BC)              ; and get the next character
-        CP $30                  ; Less than $30
-        JR C,num2               ; Not a number / end of number
-        CP $3A                  ; Greater or equal to $3A
-        JR NC,num2              ; Not a number / end of number
-                                ; Multiply digit(s) in HL by 10
-        ADD HL,HL               ; 2X
-        LD  E,L                 ; LD DE,HL
-        LD  D,H                 ; 
-        ADD HL,HL               ; 4X
-        ADD HL,HL               ; 8X
-        ADD HL,DE               ; 2X  + 8X  = 10X
-        JR  num1
-num2:
-        DEC BC
-        PUSH HL                 ; Put the number on the stack
-        EXX
-        EX DE,HL                ; NOS in HL
-        EX (SP),HL              ; TOS in HL
-        EX DE,HL                ; TOS in DE    
-        JP (IY)                 ; and process the next character
+printnum:                       ; used by tests
+        POP HL                  ; DE=TOS RET address
+        EX (SP),HL              ; HL=NOS DE=TOS
+        EX DE,HL                ; HL=TOS DE=NOS 
+printdec:
+        LD DE,-10000
+        CALL printdec1
+        LD DE,-1000
+        CALL printdec1
+        LD DE,-100
+        CALL printdec1
+        LD E,-10
+        CALL printdec1
+        LD E,-1
+printdec1:
+        LD A,'0'-1
+printdec2:
+        INC A
+        ADD	HL,DE
+        JR C,printdec2
+        SBC HL,DE
+        JP putchar
 
 ; **************************************************************************             
 ; calculate nesting value

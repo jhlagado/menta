@@ -16,7 +16,12 @@
 
 testsStart:
 
+    test "1",1
     test "0",0
+    test "10",10
+    test "2a!a@",2
+    test "2 3=", 0
+    test "3 3=", 1
     CALL printStr
     .cstr "Done!!\r\n"
     HALT

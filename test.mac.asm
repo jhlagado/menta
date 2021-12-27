@@ -1,18 +1,20 @@
 .macro expect,msg1,val1
-    POP HL
-    PUSH HL
-    LD DE,val1
+    LD HL,val1
     OR A
     SBC HL,DE
     LD A,L
     OR H
     JR Z,expect%%M
-    CALL enter
-    .cstr "`",msg1,"`\\N`Actual: `\\P\\N"
-    LD HL,val1
-    PUSH HL
-    CALL enter
-    .cstr "`Expected: `."
+
+    CALL printStr
+    .cstr msg1,"\r\nActual: "
+    CALL printnum
+
+    CALL printStr
+    .cstr "\r\nExpected: "
+    LD DE,val1
+    CALL printnum
+
     HALT
     .cstr
 expect%%M:
