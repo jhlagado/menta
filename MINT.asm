@@ -186,7 +186,7 @@ NEXT:                               ; 9
         LD L,A                      ; 4t    Index into table
         LD H,msb(opcodes)           ; 7t    Start address of jump table         
         LD L,(HL)                   ; 7t    get low jump address
-        LD H,msb(page4)             ; 7t    Load H with the 1st page address
+        LD H,msb(codePage)             ; 7t    Load H with the 1st page address
         JP (HL)                     ; 4t    Jump to routine
 
 ; **************************************************************************
@@ -472,10 +472,10 @@ altCodes:
 
 
 ; **********************************************************************			 
-; Page 4 primitive routines 
+; code page primitive routines 
 ; **********************************************************************
         .align $100
-page4:
+codePage:
 
 alt_:        
 alt:                                ;= 11
@@ -486,24 +486,50 @@ alt:                                ;= 11
         LD HL,altCodes
         ADD A,L
         LD L,A
-        LD L,(HL)                   ; 7t    get low jump address
-        LD H, msb(page6)            ; Load H with the 5th page address
-        JP  (HL)                    ; 4t    Jump to routine
+        LD L,(HL)                   
+        LD H, msb(altCodePage)            
+        JP (HL)                    
 
 and_:        
+        POP HL                      ; HL=NOS DE=TOS
+        LD A,E         
+        AND L           
+        LD E,A         
+        LD A,D         
+        AND H           
+        LD D,A         
         JP (IY)        
-                            ; 63t
+                            
 or_: 		 
+        POP HL                      ; HL=NOS DE=TOS
+        LD A,E         
+        OR L           
+        LD E,A         
+        LD A,D         
+        OR H           
+        LD D,A         
         JP (IY)        
+
+inv_:						        
+        LD HL,$FFFF                 
+        JR xor1        
 
 xor_:		 
+        POP HL                      ; HL=NOS DE=TOS
+xor1:
+        LD A,E
+        XOR L
+        LD E,A
+        LD A,D
+        XOR D
+        LD D,A         
         JP (IY)        
 
-inv_:						    
-        JP (IY)        
-   
-add_:                          ; Add the top 2 members of the stack
-        JP (IY)        
+add_:                          
+        POP HL                      ; HL=NOS DE=TOS            
+        ADD HL,DE                   ; NOS+TOS
+        EX DE,HL                    
+        JP (IY)           
 
 arrDef_:    
         JP (IY)        
@@ -515,10 +541,20 @@ begin_:
         JP (IY)        
 
 call_:
-        JP (IY)        
+        EXX
+        LD HL,BC
+        CALL rpush              ; save Instruction Pointer
+        LD A,(BC)
+        CALL lookupDef1
+        LD C,(HL)
+        INC HL
+        LD B,(HL)
+        DEC BC
+        EXX
+        JP  (IY)                ; Execute code from User def
 
 def_:   
-        JP (IY)        
+        JP def        
 
 hdot_:                              ; print hexadecimal
         JP (IY)        
@@ -526,11 +562,13 @@ hdot_:                              ; print hexadecimal
 dot_:       
         JP (IY)        
 
-drop_:                      ; Discard the top member of the stack
-        JP (IY)        
+drop_:                      
+        POP DE
+        JP (IY)
 
 dup_:        
-        JP (IY)        
+        PUSH DE
+        JP (IY)
 
 etx_:
 etx:
@@ -595,11 +633,18 @@ shr_:
         JP (IY)        
 
 neg_:   
-        JP (IY)        
-    
-sub_:       				    ; Subtract the value 2nd on stack from top of stack 
-        JP (IY)        
-                                ; 58t
+        LD HL,0    		        
+        JR sub2                 
+
+sub_:       				     
+sub1:  
+        POP HL                  
+sub2:  
+        OR A                    
+        SBC HL,DE               
+        EX DE,HL                    
+        JP (IY)                 
+                                
 eq_:    
         POP HL                  ; DE=TOS HL=NOS
         OR A                    ; reset the carry flag
@@ -607,20 +652,28 @@ eq_:
         EX DE,HL
         JR Z,eq1
 eq0:                            ; if false
-        LD DE,-1
+        LD DE,0
+        JP (IY)
 eq1:                            ; if true
-        INC DE
-        JP (IY) 
+        LD DE,1
+        JP (IY)
 
 getRef_:    
         JP (IY)        
 
 gt_:    
-        JP (IY)        
-        
+        POP HL
+        EX DE,HL
+        JR lt1
+
 lt_:    
-        JP (IY)        
-        
+        POP HL
+lt1:
+        OR A                    ; reset the carry flag
+        SBC HL,DE               ; only equality sets HL=0 here
+        JR C,eq1
+        JR eq0
+
 var_:
         LD A,varsOfs  
 var1:
@@ -639,7 +692,7 @@ div_:
         JP (IY)        
 
 mul_:   
-        JP (IY)        
+        JP mul        
 
 again_:     
         JP (IY)        
@@ -650,13 +703,33 @@ str_:
 ;*******************************************************************
 ; Page 5 primitive routines 
 ;*******************************************************************
-        ;falls through 
+mul:    ; 19
+        POP  HL             ; HL=NOS DE=TOS
+        PUSH BC             ; Preserve the IP
+        LD B,H              ; BC = 2nd value
+        LD C,L
+        LD HL,0
+        LD A,16
+mul1:
+        ADD HL,HL
+        RL E
+        RL D
+        JR NC,mul2          
+        ADD HL,BC
+        JR NC,mul2          
+        INC DE
+mul2:
+        DEC A
+        JR NZ,mul1
+		POP BC				; Restore the IP
+        EX DE,HL
+		JP (IY)
 
 ; **************************************************************************
-; Page 6 Alt primitives
+; Alt code primitives
 ; **************************************************************************
         .align $100
-page6:
+altCodePage:
 
 cArrDef_:                   ; define a byte array
         JP (IY)        
@@ -717,7 +790,16 @@ i_:
         JP (IY)        
 
 incr_:
-        JP (IY)        
+        POP HL                  ; DE=addr HL=incr
+        EX DE,HL                ; HL=addr DE=incr
+        LD A,E
+        ADD A,(HL)
+        LD (HL),A
+        INC HL
+        LD A,D
+        ADC A,(HL)
+        LD (HL),A
+        JP (IY)
 
 inPort_:
         JP (IY)        
@@ -734,11 +816,18 @@ newln_:
 outPort_:
         JP (IY)        
 
-rot_:                               
-        JP (IY)        
+rot_:                               ; a b c -- b c a
+        POP HL                      ; (SP)=a HL=b DE=c
+        EX (SP),HL                  ; (SP)=b HL=a DE=c
+        EX DE,HL                    ; (SP)=b HL=c DE=a
+        PUSH HL                                  
+        JP (IY)
 
 sign_:
-        JP (IY)        
+        BIT 7,D
+        POP DE
+        JP Z,eq0
+        JP eq1
 
 break_:
         JP (IY)        
@@ -766,9 +855,10 @@ editDef_:
 ; ********************************************************************************
          
 num:                            ;= 
-        EXX
 		LD HL,0			    	; Clear HL to accept the number
+        EXX
 		LD A,(BC)				; Get the character which is a numeral
+        EXX
 num1:                           ; corrected KB 24/11/21
 
         SUB $30                 ; Form decimal digit
@@ -778,24 +868,28 @@ num1:                           ; corrected KB 24/11/21
         ADC	A,H	                ; Add with carry H-reg
 	    LD	H,A	                ; Put result in H-reg
       
+        EXX
         INC BC                  ; Increment IP
         LD A, (BC)              ; and get the next character
+        EXX
+
         CP $30                  ; Less than $30
         JR C,num2               ; Not a number / end of number
         CP $3A                  ; Greater or equal to $3A
         JR NC,num2              ; Not a number / end of number
                                 ; Multiply digit(s) in HL by 10
         ADD HL,HL               ; 2X
-        LD  E,L                 ; LD DE,HL
+        LD  E,L                 ; LD DE,HL 
         LD  D,H                 ; 
         ADD HL,HL               ; 4X
         ADD HL,HL               ; 8X
         ADD HL,DE               ; 2X  + 8X  = 10X
         JR  num1
 num2:
-        DEC BC
-        PUSH HL                 ; Put the number on the stack
         EXX
+        DEC BC
+        EXX
+        PUSH HL                 ; Put the number on the stack
         EX DE,HL                ; NOS in HL
         EX (SP),HL              ; TOS in HL
         EX DE,HL                ; TOS in DE    
@@ -859,6 +953,22 @@ enter:                          ;= 9
         EXX
         JP  (IY)                ; Execute code from User def
 
+lookupDef:                       ;= 11
+        SUB "A"  
+        LD (vEdited),A      
+        JR lookupDef2
+lookupDef1:
+        SUB "A"  
+lookupDef2:
+        ADD A,A
+        LD HL,(vDEFS)
+        ADD A,L
+        LD L,A
+        LD A,0
+        ADC A,H
+        LD H,A
+        RET
+
 printnum:                       ; used by tests
         POP HL                  ; DE=TOS RET address
         EX (SP),HL              ; HL=NOS DE=TOS
@@ -881,6 +991,30 @@ printdec2:
         JR C,printdec2
         SBC HL,DE
         JP putchar
+
+;TODO rewrite BC increments so we dont need to decrement at end
+def:                            ; Create a colon definition
+        EXX
+        INC BC
+        LD  A,(BC)              ; Get the next character
+        CALL lookupDef
+        PUSH DE                 ; save return SP
+        LD DE,(vHeapPtr)        ; start of defintion  
+        LD (HL),E               ; Save low byte of address in CFA
+        INC HL              
+        LD (HL),D               ; Save high byte of address in CFA+1
+        EX DE,HL                ; HL=HeapPtr
+        POP DE                  ; restore return SP
+def1:                           ; Skip to end of definition   
+        INC BC                  ; Point to next character
+        LD A,(BC)               ; Get the next character
+        LD (HL),A               ; write to definition
+        INC HL
+        CP ";"                  ; Is it a semicolon 
+        JR NZ, def1             ; end the definition
+        LD (vHeapPtr),HL        ; bump heap ptr to after definiton
+        EXX
+        JP (IY)       
 
 ; **************************************************************************             
 ; calculate nesting value
