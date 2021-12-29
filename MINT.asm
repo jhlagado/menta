@@ -77,7 +77,7 @@ macro:                          ; 25
         LD E,(HL)
         LD D,msb(macros)
         PUSH DE
-        call ENTER
+        CALL enter
         .cstr "\\G"
         LD BC,(vTIBPtr)
         JR interpret2
@@ -204,6 +204,47 @@ compNext1:
         POP DE
         LD (vHeapPtr),HL        ; save heap ptr
         JR NEXT
+
+nesting:                            ;=46 
+        BIT 7,E             
+        JR NZ,nesting1
+        CP '`'
+        JR Z, nesting0
+        JR nesting1a
+nesting1:
+        CP '`'
+        JR NZ,nesting1a
+nesting0:
+        LD A,$80
+        XOR E                       ; flip bit 7
+        LD E,A
+        RET 
+nesting1a:
+        CP ':'
+        JR Z,nesting2
+        CP '['
+        JR Z,nesting2
+        CP '('
+        JR NZ,nesting3
+nesting2:
+        INC E
+        RET 
+nesting3:
+        CP ';'
+        JR Z,nesting4
+        CP ']'
+        JR Z,nesting4
+        CP ')'
+        RET NZ
+nesting4:
+        DEC E
+        RET 
+
+prompt:                             ;=9
+        call printStr
+        .cstr "\r\n> "
+        RET
+        
 
 ; **************************************************************************
 ; Macros must be written in Mint and end with ; 
@@ -494,18 +535,7 @@ altCodes:
 codePage:
 
 alt_:        
-alt:                                ;= 11
-        EXX
-        INC BC
-        LD A,(BC)
-        EXX
-        LD HL,altCodes
-        ADD A,L
-        LD L,A
-        LD L,(HL)                   
-        LD H, msb(altCodePage)            
-        JP (HL)                    
-
+        JP alt
 and_:        
         POP HL                      ; HL=NOS DE=TOS
         LD A,E         
@@ -548,16 +578,16 @@ add_:
         JP (IY)           
 
 arrDef_:    
-arrDef:                     ;= 18
+arrDef:                             ;= 18
         LD A,FALSE
 arrDef1:      
         LD IY,compNEXT
         LD (vByteMode),A
         EXX
-        LD HL,(vHeapPtr)    ; HL = heap ptr
-        CALL rpush          ; save start of array \[  \]
+        LD HL,(vHeapPtr)            ; HL = heap ptr
+        CALL rpush                  ; save start of array \[  \]
         EXX
-        JP NEXT             ; hardwired to NEXT
+        JP NEXT                     ; hardwired to NEXT
 
 arrEnd_:    
         JP arrEnd        
@@ -568,7 +598,7 @@ begin_:
 call_:
         EXX
         LD HL,BC
-        CALL rpush              ; save Instruction Pointer
+        CALL rpush                  ; save Instruction Pointer
         LD A,(BC)
         CALL lookupDef1
         LD C,(HL)
@@ -576,16 +606,23 @@ call_:
         LD B,(HL)
         DEC BC
         EXX
-        JP  (IY)                ; Execute code from User def
+        JP  (IY)                    ; Execute code from User def
 
 def_:   
         JP def        
 
 hdot_:                              ; print hexadecimal
-        JP (IY)        
-
+        EX DE,HL
+        CALL printhex
+        JR dot2
 dot_:       
-        JP (IY)        
+        EX DE,HL
+        CALL printdec
+dot2:
+        POP DE                      ; consume TOS
+        LD A," "                    ; print space
+        CALL putchar
+        JP (IY)
 
 drop_:                      
         POP DE
@@ -615,6 +652,7 @@ exit_:
         
 fetch_:                           
         EX DE,HL
+fetch1:
         LD E,(HL)      
         INC HL          
         LD D,(HL)      
@@ -624,13 +662,13 @@ hex_:
         JP (IY)        
 
 nop_:   
-        JP NEXT                 ; hardwire white space to always go to NEXT (important for arrays)
+        JP NEXT                     ; hardwire white space to always go to NEXT (important for arrays)
 
 num_:   
         JP num        
 
 over_:  
-        POP HL                  ; HL=NOS
+        POP HL                      ; HL=NOS
         PUSH HL
         PUSH DE
         EX DE,HL                
@@ -638,18 +676,18 @@ over_:
     
 ret_:
         EXX
-        CALL rpop               ; Restore Instruction pointer
+        CALL rpop                   ; Restore Instruction pointer
         LD BC,HL                
         EXX
         JP (IY)             
 
 store_:                     
-        EX DE,HL                ; HL = TOS
-        POP DE                  ; DE = NOS
+        EX DE,HL                    ; HL = TOS
+        POP DE                      ; DE = NOS
         LD (HL),E       
         INC HL           
         LD (HL),D       
-        POP DE                  ; DE = TOS
+        POP DE                      ; DE = TOS
         JP (IY)         
 
 swap_:        
@@ -659,10 +697,18 @@ swap_:
         JP (IY)
 
 shl_:   
-        JP (IY)        
+        EX DE,HL                
+        ADD HL,HL                   ; shift left
+        EX DE,HL                
+        JP (IY)                 
     
 shr_:    
-        JP (IY)        
+        EX DE,HL                
+shr1:
+        SRL H
+        RR L
+        EX DE,HL                
+        JP (IY)                 
 
 neg_:   
         LD HL,0    		        
@@ -678,20 +724,20 @@ sub2:
         JP (IY)                 
                                 
 eq_:    
-        POP HL                  ; DE=TOS HL=NOS
-        OR A                    ; reset the carry flag
-        SBC HL,DE               ; NOS-TOS if equal HL=0
+        POP HL                      ; DE=TOS HL=NOS
+        OR A                        ; reset the carry flag
+        SBC HL,DE                   ; NOS-TOS if equal HL=0
         EX DE,HL
         JR Z,eq1
-eq0:                            ; if false
+eq0:                                ; if false
         LD DE,0
         JP (IY)
-eq1:                            ; if true
+eq1:                                ; if true
         LD DE,1
         JP (IY)
 
 getRef_:    
-        JP (IY)        
+        JP getRef        
 
 gt_:    
         POP HL
@@ -701,8 +747,8 @@ gt_:
 lt_:    
         POP HL
 lt1:
-        OR A                    ; reset the carry flag
-        SBC HL,DE               ; only equality sets HL=0 here
+        OR A                        ; reset the carry flag
+        SBC HL,DE                   ; only equality sets HL=0 here
         JR C,eq1
         JR eq0
 
@@ -715,8 +761,8 @@ var1:
         ADD A,(HL)
         ADD A,A
         EXX
-        PUSH DE                 ; push TOS
-        LD E,A                  ; TOS = ptr to var
+        PUSH DE                     ; push TOS
+        LD E,A                      ; TOS = ptr to var
         LD D,msb(mintVars)
         JP (IY)
         
@@ -730,11 +776,225 @@ again_:
         JP again        
 
 str_:                       
-        JP (IY)        
+str:                                ;= 17
+        EXX
+        INC BC
+        
+str1:            
+        LD A, (BC)
+        INC BC
+        CP "`"                      ; ` is the string terminator
+        JR Z,str2
+        CALL putchar
+        JR str1
+
+str2:  
+        DEC BC
+        EXX
+        JP (IY) 
 
 ;*******************************************************************
 ; Code commands Commands continued
 ;*******************************************************************
+
+getRef:                             ;= 8
+        INC BC
+        LD A,(BC)
+        CALL getGroup
+        JP fetch1
+
+alt:                                ;=13               
+        EXX
+        INC BC
+        LD A,(BC)
+        EXX
+        LD HL,altCodes
+        ADD A,L
+        LD L,A
+        LD L,(HL)                   
+        LD H, msb(altCodePage)            
+        JP (HL)                    
+
+
+mul:                                ;=25
+        POP  HL                     ; HL=NOS DE=TOS
+        LD B,H                      ; BC = 2nd value
+        LD C,L
+        LD HL,0
+        LD A,16
+mul1:
+        ADD HL,HL
+        RL E
+        RL D
+        JR NC,mul2          
+        ADD HL,BC
+        JR NC,mul2          
+        INC DE
+mul2:
+        DEC A
+        JR NZ,mul1
+        EX DE,HL
+		JP (IY)
+
+div:                                ;=29
+        POP BC                      ; BC=NOS DE=TOS
+        LD HL,0    	                ; zero the remainder
+        LD A,16    	                ; loop counter
+
+div1:		                        ; shift the bits from BC (numerator) into HL (accumulator)
+        SLA C
+        RL B
+        ADC HL,HL
+        SBC HL,DE			        ; check if remainder >= denominator (HL>=DE)
+        JR C,div2
+        INC C
+        JR div3
+
+div2:		                        ; remainder is not >= denominator, so we have to add DE back to HL
+        ADD HL,DE
+
+div3:
+        DEC A
+        JR NZ,div1
+        LD DE,BC                    ; result from BC to DE
+        PUSH DE                     ; push Result
+        EX DE,HL                    ; TOS=remainder             
+        JP (IY)
+
+                                    ;=30
+def:                                ; Create a colon definition
+        EXX
+        INC BC
+        LD  A,(BC)                  ; Get the next character
+        CALL lookupDef
+        PUSH DE                     ; save return SP
+        LD DE,(vHeapPtr)            ; start of defintion  
+        LD (HL),E                   ; Save low byte of address in CFA
+        INC HL              
+        LD (HL),D                   ; Save high byte of address in CFA+1
+        EX DE,HL                    ; HL=HeapPtr
+        POP DE                      ; restore return SP
+def1:                               ; Skip to end of definition   
+        INC BC                      ; Point to next character
+        LD A,(BC)                   ; Get the next character
+        LD (HL),A                   ; write to definition
+        INC HL
+        CP ";"                      ; Is it a semicolon 
+        JR NZ, def1                 ; end the definition
+        LD (vHeapPtr),HL            ; bump heap ptr to after definiton
+        EXX
+        JP (IY)       
+
+num:                                ;=41 
+        PUSH DE
+		LD HL,0			    	    ; Clear HL to accept the number
+        EXX
+		LD A,(BC)				    ; Get the character which is a numeral
+        EXX
+num1:                               ; corrected KB 24/11/21
+
+        SUB $30                     ; Form decimal digit
+        ADD A,L                     ; Add into bottom of HL
+        LD  L,A                      
+        LD A,0                      ; Clear A
+        ADC	A,H	                    ; Add with carry H-reg
+	    LD	H,A	                    ; Put result in H-reg
+      
+        EXX
+        INC BC                      ; Increment IP
+        LD A, (BC)                  ; and get the next character
+        EXX
+
+        CP $30                      ; Less than $30
+        JR C,num2                   ; Not a number / end of number
+        CP $3A                      ; Greater or equal to $3A
+        JR NC,num2                  ; Not a number / end of number
+                                    ; Multiply digit(s) in HL by 10
+        ADD HL,HL                   ; 2X
+        LD  DE,HL                   ; LD DE,HL 
+        ADD HL,HL                   ; 4X
+        ADD HL,HL                   ; 8X
+        ADD HL,DE                   ; 2X  + 8X  = 10X
+        JR  num1
+num2:
+        EXX
+        DEC BC
+        EXX
+        EX DE,HL                    ; NOS in HL
+        JP (IY)                     ; and process the next character
+
+
+                                    ;=41
+begin:                              ; Left parentesis begins a loop
+        LD A,E                      ; zero?
+        OR D
+        JR Z,begin1                 ; if false skip to closing brace
+        PUSH DE                     ; save loop limit
+        EXX
+        LD HL,BC                    ; create loop stackframe
+        CALL rpush                  ; -> loopAddress
+        POP HL                      ; pop saved loop limit
+        CALL rpush                  ; -> loopLimit
+        LD HL,0                     ; inital value
+        CALL rpush                  ; -> loopVar
+        JR begin3
+
+begin1:
+        EXX
+        PUSH DE                     ; preserve RSP
+        LD E,1                      ; initalise nesting (include opening "(")
+begin2:
+        INC BC                      ; inc IP
+        LD A,(BC)                   ; read next char
+        CALL nesting                ; calc nesting
+        XOR A                       
+        OR E
+        JR NZ,begin2                ; loop until nesting 0 
+        POP DE                      ; restore RSP
+begin3:
+        EXX
+        POP DE                      ; consume TOS
+        JP (IY)
+
+again:                              ;=51
+        EXX
+        CALL rpop                   ; HL=loopVar 
+        LD A,H                      ; check for -1 ($FF) (IFTEMode)
+        AND L
+        INC A
+        JR NZ,again1
+        EXX                         
+        PUSH DE                     ; IFTEMode
+        LD D,0                      ; return FALSE
+        JP (IY)
+again1:                             ; HL=loopVar
+        PUSH BC                     ; save IP
+        LD BC,HL                    ; BC=loopVar
+        CALL rpop                   ; HL=loopLimit 
+        DEC HL                      ; reduce loopLimit by 1
+        OR A
+        SBC HL,BC                   ; (loopLimit-1) - loopVar
+        JR Z,again2                 ; exit if loopVar = loopLimit-1
+        CALL rpop                   ; HL=loopAddress (SP)=IP
+        EX (SP),HL                  ; (SP)=loopAddress HL=IP
+        LD HL,BC                    ; HL=loopVar
+        INC HL                      ; inc loopVar
+        POP BC                      ; BC=loopAddress
+        DEC DE                      ; move RSP to point to loopVar
+        DEC DE
+        DEC DE
+        DEC DE
+        CALL rpush                  ; rpush loopvar, stackFrame restored
+        EXX
+        JP (IY)
+again2:                             ; terminating loop
+        POP BC                      ; restore IP
+        INC DE                      ; remove the stackframe
+        INC DE
+        EXX
+        JP (IY)
+
+
 ; **************************************************************************
 ; Alt code primitives
 ; **************************************************************************
@@ -773,58 +1033,96 @@ cStore_:
         JP (IY)         
                             
 depth_:
-        JP (IY)        
+        LD HL,0
+        ADD HL,SP
+        PUSH DE                     ; preserve TOS
+        EX DE,HL                    ; DE=SP
+        LD HL,DSTACK                ; HL=start
+        OR A
+        SBC HL,DE                   ; start - SP
+        JP shr1
 
 emit_:
-        JP (IY)        
+        LD A,E
+        POP DE                      ; consume
+        CALL putchar
+        JP (IY)
 
 ifte_:
-        JP (IY)        
+        LD A,E
+        OR D
+        JP NZ,ifte1
+        INC DE                      ; TOS=TRUE for else clause
+        JP begin1                   ; skip to closing ) works with \) too 
+ifte1:
+        EXX
+        LD HL,-1                    ; push -1 on RSTACK to indicate IFTEMode
+        CALL rpush
+        EXX
+        POP DE                      ; consume
+        JP (IY)
 
 exec_:
         CALL exec1
         JP (IY)
 exec1:
-        POP HL                  ; HL = RET address    
-        EX (SP),HL              ; HL = NOS, (SP) = RET
-        EX DE,HL                ; HL = TOS, DE = NOS
-        JP (HL)                 ; JP to machine code, RET will return to exec_
+        POP HL                      ; HL = RET address    
+        EX (SP),HL                  ; HL = NOS, (SP) = RET
+        EX DE,HL                    ; HL = TOS, DE = NOS
+        JP (HL)                     ; JP to machine code, RET will return to exec_
 
 go_:
-        PUSH DE                 ; push TOS
+        PUSH DE                     ; push TOS
         EXX
         LD HL,BC
-        CALL rpush              ; save Instruction Pointer
-        POP BC                  ; pop TOS
-        DEC BC                  ; decrement to just before 
+        CALL rpush                  ; save Instruction Pointer
+        POP BC                      ; pop TOS
+        DEC BC                      ; decrement to just before 
         EXX
-        JP  (IY)                ; Execute code from User def
+        JP  (IY)                    ; Execute code from User def
 
 endGroup_:
-        JP (IY)        
+        EXX
+        CALL rpop
+        LD (vDEFS),HL
+        EXX
+        JP (IY)
 
 group_:
-        JP (IY)        
+        EXX                         ; save state of vDEFS on RSTACK
+        LD HL,(vDEFS)
+        CALL rpush
+        EXX
+        LD D,E                      ; TOS * 64    
+        LD E,0
+        SRL D
+        RR E
+        SRL D
+        RR E
+        LD HL,DEFS                  
+        ADD HL,DE                   ; HL=DEFS + TOS * 64
+        LD (vDEFS),HL               ; store in vDEFS
+        JP  (IY)                
 
 sysVar_:
         LD A,sysvarsOfs  
         JP var1
 
 i_:
-        LD HL,0                 ; loop stackframe offset
+        LD HL,0                     ; loop stackframe offset
 i1:
-        PUSH DE                 ; push down TOS
+        PUSH DE                     ; push down TOS
         EXX
-        PUSH DE                 ; save RSP (loopVar)
+        PUSH DE                     ; save RSP (loopVar)
         EXX
-        POP DE                  ; DE=RSP
-        ADD HL,DE               ; HL=RSP+offset
-        EX DE,HL                ; TOS=RSP+offset
+        POP DE                      ; DE=RSP
+        ADD HL,DE                   ; HL=RSP+offset
+        EX DE,HL                    ; TOS=RSP+offset
         JP (IY)
 
 incr_:
-        POP HL                  ; DE=addr HL=incr
-        EX DE,HL                ; HL=addr DE=incr
+        POP HL                      ; DE=addr HL=incr
+        EX DE,HL                    ; HL=addr DE=incr
         LD A,E
         ADD A,(HL)
         LD (HL),A
@@ -835,6 +1133,9 @@ incr_:
         JP (IY)
 
 inPort_:
+        LD C,E
+        IN E,(C)
+        LD D,0
         JP (IY)        
 
 j_:
@@ -842,12 +1143,20 @@ j_:
         JR i1
 
 key_:
-        JP (IY)        
+        PUSH DE                     ; push down TOS
+        CALL getchar
+        LD E,A
+        LD D,0
+        JP (IY)
 
 newln_:
+        call crlf
         JP (IY)        
 
 outPort_:
+        LD C,E
+        POP HL
+        OUT (C),L
         JP (IY)        
 
 rot_:                               ; a b c -- b c a
@@ -858,196 +1167,107 @@ rot_:                               ; a b c -- b c a
         JP (IY)
 
 break_:
-        JP (IY)        
+        LD A,E                      ; zero?
+        OR D
+        POP DE                      ; consume
+        JR NZ,break1
+        JP (IY)
+break1:
+        EXX
+        LD HL,6                     ; drop loop frame
+        ADD HL,DE
+        EX DE,HL
+        JP begin1                   ; skip to end of loop        
 
 printStk_:
-        JP (IY)        
-
+        JR printStk
 editDef_:
-        JP (IY)        
-
+                            ;= 
 ;*******************************************************************
 ; Alt Code commands Commands continued
 ;*******************************************************************
+                                    ;=54
+editDef:                            ; lookup up def based on number
+        LD A,"A"
+        ADD A,E
+        EX AF,AF'
+        LD HL,(vDEFS)
+        ADD HL,DE
+        ADD HL,DE
+        LD E,(HL)
+        INC HL
+        LD D,(HL)
+        EX DE,HL
+        LD A,(HL)
+        CP ";"
+        LD DE,TIB
+        JR Z,editDef3
+        LD A,":"
+        CALL writeChar
+        EX AF,AF'
+        CALL writeChar
+        JR editDef2
+editDef1:
+        INC HL
+editDef2:        
+        LD A,(HL)
+        CALL writeChar
+        CP ";"
+        JR NZ,editDef1
+editDef3:        
+        LD HL,TIB
+        EX DE,HL
+        OR A
+        SBC HL,DE
+        LD (vTIBPtr),HL
+        POP DE                      ; consume
+        JP (IY)
+
+printStk:                   ;= 40
+        CALL enter
+        .cstr "\\a@2-\\D1-(",$22,"@\\b@\\(,)(.)2-)'"             
+        JP (IY)
 
 ;*******************************************************************
 ; Misc Commands continued
 ;*******************************************************************
 
-mul:    ; 19
-        POP  HL             ; HL=NOS DE=TOS
-        LD B,H              ; BC = 2nd value
-        LD C,L
-        LD HL,0
-        LD A,16
-mul1:
-        ADD HL,HL
-        RL E
-        RL D
-        JR NC,mul2          
-        ADD HL,BC
-        JR NC,mul2          
-        INC DE
-mul2:
-        DEC A
-        JR NZ,mul1
-        EX DE,HL
-		JP (IY)
-
-div:                        ;=
-        POP BC              ; BC=NOS DE=TOS
-        LD HL,0    	        ; zero the remainder
-        LD A,16    	        ; loop counter
-
-div_loop:		            ; shift the bits from BC (numerator) into HL (accumulator)
-        SLA C
-        RL B
-        ADC HL,HL
-        SBC HL,DE			; check if remainder >= denominator (HL>=DE)
-        JR C,div_adjust
-        INC C
-        JR div_done
-
-div_adjust:		            ; remainder is not >= denominator, so we have to add DE back to HL
-        ADD HL,DE
-
-div_done:
-        DEC A
-        JR NZ,div_loop
-        LD DE,BC            ; result from BC to DE
-
-div_end:    
-        PUSH DE             ; push Result
-        EX DE,HL            ; TOS=remainder             
-        JP (IY)
-
-; end a word array
-arrEnd:                         ;=27
+arrEnd:                             ;=33
         EXX
-        CALL rpop               ; DE = start of array
+        CALL rpop                   ; DE = start of array
         PUSH HL
         EXX
-        EX DE,HL                ; HL=TOS
-        EX (SP),HL              ; (SP)=TOS HL=start of array
-        EX DE,HL                ; DE=start of array
-        LD HL,(vHeapPtr)        ; HL = heap ptr
+        EX DE,HL                    ; HL=TOS
+        EX (SP),HL                  ; (SP)=TOS HL=start of array
+        EX DE,HL                    ; DE=start of array
+        LD HL,(vHeapPtr)            ; HL = heap ptr
         OR A
-        SBC HL,DE               ; bytes on heap 
+        SBC HL,DE                   ; bytes on heap 
         LD A,(vByteMode)
         OR A
         JR NZ,arrEnd2
-        SRL H                   ; BC = m words
+        SRL H                       ; BC = m words
         RR L
 arrEnd2:
-        PUSH DE                 ; (SP)=start of array
-        EX DE,HL                ; DE=length 
-        LD IY,NEXT              ; restore IY
-        JP (IY)                 ; hardwired to NEXT
-
-def:                            ; Create a colon definition
-        EXX
-        INC BC
-        LD  A,(BC)              ; Get the next character
-        CALL lookupDef
-        PUSH DE                 ; save return SP
-        LD DE,(vHeapPtr)        ; start of defintion  
-        LD (HL),E               ; Save low byte of address in CFA
-        INC HL              
-        LD (HL),D               ; Save high byte of address in CFA+1
-        EX DE,HL                ; HL=HeapPtr
-        POP DE                  ; restore return SP
-def1:                           ; Skip to end of definition   
-        INC BC                  ; Point to next character
-        LD A,(BC)               ; Get the next character
-        LD (HL),A               ; write to definition
-        INC HL
-        CP ";"                  ; Is it a semicolon 
-        JR NZ, def1             ; end the definition
-        LD (vHeapPtr),HL        ; bump heap ptr to after definiton
-        EXX
-        JP (IY)       
-
-; ********************************************************************************
-; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
-; Read the first character. 
-;			
-; Number characters ($30 to $39) are converted to digits by subtracting $30
-; and then added into the L register. (HL forms a 16-bit accumulator)
-; Fetch the next character, if it is a number, multiply contents of HL by 10
-; and then add in the next digit. Repeat this until a non-number character is 
-; detected. Add in the final digit so that HL contains the converted number.
-; Push HL onto the stack and proceed to the dispatch routine.
-; ********************************************************************************
-         
-num:                            ;= 
-        PUSH DE
-		LD HL,0			    	; Clear HL to accept the number
-        EXX
-		LD A,(BC)				; Get the character which is a numeral
-        EXX
-num1:                           ; corrected KB 24/11/21
-
-        SUB $30                 ; Form decimal digit
-        ADD A,L                 ; Add into bottom of HL
-        LD  L,A                 ; 
-        LD A,0                  ; Clear A
-        ADC	A,H	                ; Add with carry H-reg
-	    LD	H,A	                ; Put result in H-reg
-      
-        EXX
-        INC BC                  ; Increment IP
-        LD A, (BC)              ; and get the next character
-        EXX
-
-        CP $30                  ; Less than $30
-        JR C,num2               ; Not a number / end of number
-        CP $3A                  ; Greater or equal to $3A
-        JR NC,num2              ; Not a number / end of number
-                                ; Multiply digit(s) in HL by 10
-        ADD HL,HL               ; 2X
-        LD  DE,HL               ; LD DE,HL 
-        ADD HL,HL               ; 4X
-        ADD HL,HL               ; 8X
-        ADD HL,DE               ; 2X  + 8X  = 10X
-        JR  num1
-num2:
-        EXX
-        DEC BC
-        EXX
-        EX DE,HL                ; NOS in HL
-        JP (IY)                 ; and process the next character
+        PUSH DE                     ; (SP)=start of array
+        EX DE,HL                    ; DE=length 
+        LD IY,NEXT                  ; restore IY
+        JP (IY)                     ; hardwired to NEXT
 
 ;*******************************************************************
 ; Subroutines
 ;*******************************************************************
 
-crlf:                               ; 18
-        call printStr
-        .cstr "\r\n"
-        RET
+enter:                              ;=11
+        EXX
+        LD HL,BC
+        CALL rpush                  ; save Instruction Pointer
+        POP BC
+        DEC BC
+        EXX
+        JP  (IY)                    ; Execute code in user command
 
-prompt:
-        call printStr
-        .cstr "\r\n> "
-        RET
-        
-printStr:
-        EX (SP),HL
-        JR printStr2
-
-printStr1:
-        CALL putchar
-        INC HL
-
-printStr2:
-        LD A,(HL)
-        OR A
-        JR NZ,printStr1
-        INC HL
-        EX (SP),HL
-        RET
-        
-rpush:                              ; 11
+rpush:                              ;=7
         EX DE,HL
         DEC HL                  
         LD (HL),D
@@ -1056,7 +1276,7 @@ rpush:                              ; 11
         EX DE,HL
         RET
 
-rpop:                               ; 11
+rpop:                               ;=7
         EX DE,HL
         LD E,(HL)         
         INC HL              
@@ -1065,16 +1285,7 @@ rpop:                               ; 11
         EX DE,HL
         RET
 
-enter:                          ;= 9
-        EXX
-        LD HL,BC
-        CALL rpush              ; save Instruction Pointer
-        POP BC
-        DEC BC
-        EXX
-        JP  (IY)                ; Execute code from User def
-
-lookupDef:                       ;= 11
+lookupDef:                          ;=20
         SUB "A"  
         LD (vEdited),A      
         JR lookupDef2
@@ -1090,11 +1301,49 @@ lookupDef2:
         LD H,A
         RET
 
-printnum:                       ; used by tests
-        POP HL                  ; DE=TOS RET address
-        EX (SP),HL              ; HL=NOS DE=TOS
-        EX DE,HL                ; HL=TOS DE=NOS 
-printdec:
+getGroup:                           ;=20
+        SUB "A"  
+        LD (vEdited),A      
+        JR getGroup2
+getGroup1:
+        SUB "A"  
+getGroup2:
+        ADD A,A
+        LD HL,(vDEFS)
+        ADD A,L
+        LD L,A
+        LD A,0
+        ADC A,H
+        LD H,A
+        RET
+
+writeChar:                          ;=5
+        LD (DE),A
+        INC DE
+        JP putchar
+
+crlf:                               ;=7
+        call printStr
+        .cstr "\r\n"
+        RET
+
+printStr:                           ;=14
+        EX (SP),HL
+        JR printStr2
+
+printStr1:
+        CALL putchar
+        INC HL
+
+printStr2:
+        LD A,(HL)
+        OR A
+        JR NZ,printStr1
+        INC HL
+        EX (SP),HL
+        RET
+        
+printdec:                           ;=36
         LD DE,-10000
         CALL printdec1
         LD DE,-1000
@@ -1113,121 +1362,27 @@ printdec2:
         SBC HL,DE
         JP putchar
 
-; **************************************************************************             
-; calculate nesting value
-; A is char to be tested, 
-; E is the nesting value (initially 0)
-; E is increased by ( and [ 
-; E is decreased by ) and ]
-; E has its bit 7 toggled by `
-; limited to 127 levels
-; **************************************************************************             
+printhex:                           ;=29   
+        LD A,H
+        CALL printhex2
+        LD A,L
+        CALL printhex2
+        RET
 
-nesting:                        ;= 
-        BIT 7,E             
-        JR NZ,nesting1
-        CP '`'
-        JR Z, nesting0
-        JR nesting1a
-nesting1:
-        CP '`'
-        JR NZ,nesting1a
-nesting0:
-        LD A,$80
-        XOR E                 ; flip bit 7
-        LD E,A
-        RET 
-nesting1a:
-        CP ':'
-        JR Z,nesting2
-        CP '['
-        JR Z,nesting2
-        CP '('
-        JR NZ,nesting3
-nesting2:
-        INC E
-        RET 
-nesting3:
-        CP ';'
-        JR Z,nesting4
-        CP ']'
-        JR Z,nesting4
-        CP ')'
-        RET NZ
-nesting4:
-        DEC E
-        RET 
+printhex2:		                    
+        LD	C,A
+		RRA 
+		RRA 
+		RRA 
+		RRA 
+	    CALL printhex3
+	    LD A,C
 
-; *************************************
-; Loop Handling Code
-; *************************************
-        	                        ;= 23                     
-begin:                              ; Left parentesis begins a loop
-        LD A,E                      ; zero?
-        OR D
-        JR Z,begin1                 ; if false skip to closing brace
-        PUSH DE                     ; save loop limit
-        EXX
-        LD HL,BC                    ; create loop stackframe
-        CALL rpush                  ; -> loopAddress
-        POP HL                      ; pop saved loop limit
-        CALL rpush                  ; -> loopLimit
-        LD HL,0                     ; inital value
-        CALL rpush                  ; -> loopVar
-        JR begin3
-
-begin1:
-        EXX
-        PUSH DE                     ; preserve RSP
-        LD E,1                      ; initalise nesting (include opening "(")
-begin2:
-        INC BC                      ; inc IP
-        LD A,(BC)                   ; read next char
-        CALL nesting                ; calc nesting
-        XOR A                       
-        OR E
-        JR NZ,begin2                ; loop until nesting 0 
-        POP DE                      ; restore RSP
-begin3:
-        EXX
-        POP DE                      ; consume TOS
-        JP (IY)
-
-again:   
-        EXX
-        CALL rpop                   ; HL=loopVar 
-        LD A,H                      ; check for -1 ($FF) (IFTEMode)
-        AND L
-        INC A
-        JR NZ,again1
-        EXX                         
-        PUSH DE                     ; IFTEMode
-        LD D,0                      ; return FALSE
-        JP (IY)
-again1:                             ; HL=loopVar
-        PUSH BC                     ; save IP
-        LD BC,HL                    ; BC=loopVar
-        CALL rpop                   ; HL=loopLimit 
-        DEC HL                      ; reduce loopLimit by 1
-        OR A
-        SBC HL,BC                   ; (loopLimit-1) - loopVar
-        JR Z,again2                 ; exit if loopVar = loopLimit-1
-        CALL rpop                   ; HL=loopAddress (SP)=IP
-        EX (SP),HL                  ; (SP)=loopAddress HL=IP
-        LD HL,BC                    ; HL=loopVar
-        INC HL                      ; inc loopVar
-        POP BC                      ; BC=loopAddress
-        DEC DE                      ; move RSP to point to loopVar
-        DEC DE
-        DEC DE
-        DEC DE
-        CALL rpush                  ; rpush loopvar, stackFrame restored
-        EXX
-        JP (IY)
-again2:                             ; terminating loop
-        POP BC                      ; restore IP
-        INC DE                      ; remove the stackframe
-        INC DE
-        EXX
-        JP (IY)
+printhex3:		
+        AND	0x0F
+		ADD	A,0x90
+		DAA
+		ADC	A,0x40
+		DAA
+		JP putchar
 

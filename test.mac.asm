@@ -8,12 +8,13 @@
 
     CALL printStr
     .cstr msg1,"\r\nActual: "
-    CALL printnum
+    LD HL,DE    
+    CALL printdec
 
     CALL printStr
     .cstr "\r\nExpected: "
-    LD DE,val1
-    CALL printnum
+    LD HL,val1
+    CALL printdec
 
     HALT
     .cstr

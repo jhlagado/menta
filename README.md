@@ -1,3 +1,16 @@
+# MINTO experiment
+
+Not faster than MINT despite TOS in register and maybe faster RSTACK
+
+40% slower than MINT
+1000(1000()) 100 seconds
+
+in MINT 
+1000(1000()) 60 seconds 
+
+
+
+
 # MINT
 
 A Minimal Interpreter in Z80 assembly language for small Z80 systems such as the TEC-1 and RC2014.

@@ -2,21 +2,20 @@ empty_:
         DB ";"
 
 backsp_:
-        DB ";"
-
-edit_:
-        DB ";"
+        DB "\\c@0=0=(1_\\c\\+`\b \b`);"
 
 reedit_:
-        DB ";"
+        DB "\\e\\@\\Z;"
+
+edit_:
+        .cstr "`?`\\K\\N`> `\\^A-\\Z;"
 
 list_:
-        DB ";"
+        .cstr "\\N26(\\i@\\Z\\c@0>(\\N))\\N`> `;"
 
 printStack_:
-        DB ";"
+        .cstr "`=> `\\P\\N\\N`> `;"        
 
 toggleBase_:
-        DB ";"
-
+        .cstr "\\b@0=\\b!;"
 
