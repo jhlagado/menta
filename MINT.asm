@@ -452,7 +452,7 @@ altCodes:
         DB     lsb(comment_)    ;    \  comment text, skips reading until end of line
         DB     lsb(aNop_)       ;    ]
         DB     lsb(charCode_)   ;    ^
-        DB     lsb(sign_)       ;    _)  ( n -- b ) returns true if -ve 
+        DB     lsb(aNop_)       ;    _)  ( n -- b ) returns true if -ve 
         DB     lsb(aNop_)       ;    `            
         DB     lsb(sysVar_)     ;    a  ; start of data stack variable
         DB     lsb(sysVar_)     ;    b  ; base16 variable
@@ -721,7 +721,7 @@ var1:
         JP (IY)
         
 div_:   
-        JP (IY)        
+        JP div        
 
 mul_:   
         JP mul        
@@ -733,7 +733,7 @@ str_:
         JP (IY)        
 
 ;*******************************************************************
-; Page 5 primitive routines 
+; Code commands Commands continued
 ;*******************************************************************
 ; **************************************************************************
 ; Alt code primitives
@@ -857,12 +857,6 @@ rot_:                               ; a b c -- b c a
         PUSH HL                                  
         JP (IY)
 
-sign_:
-        BIT 7,D
-        POP DE
-        JP Z,eq0
-        JP eq1
-
 break_:
         JP (IY)        
 
@@ -873,11 +867,15 @@ editDef_:
         JP (IY)        
 
 ;*******************************************************************
-; Commands continued
+; Alt Code commands Commands continued
 ;*******************************************************************
+
+;*******************************************************************
+; Misc Commands continued
+;*******************************************************************
+
 mul:    ; 19
         POP  HL             ; HL=NOS DE=TOS
-        PUSH BC             ; Preserve the IP
         LD B,H              ; BC = 2nd value
         LD C,L
         LD HL,0
@@ -893,13 +891,38 @@ mul1:
 mul2:
         DEC A
         JR NZ,mul1
-		POP BC				; Restore the IP
         EX DE,HL
 		JP (IY)
 
+div:                        ;=
+        POP BC              ; BC=NOS DE=TOS
+        LD HL,0    	        ; zero the remainder
+        LD A,16    	        ; loop counter
+
+div_loop:		            ; shift the bits from BC (numerator) into HL (accumulator)
+        SLA C
+        RL B
+        ADC HL,HL
+        SBC HL,DE			; check if remainder >= denominator (HL>=DE)
+        JR C,div_adjust
+        INC C
+        JR div_done
+
+div_adjust:		            ; remainder is not >= denominator, so we have to add DE back to HL
+        ADD HL,DE
+
+div_done:
+        DEC A
+        JR NZ,div_loop
+        LD DE,BC            ; result from BC to DE
+
+div_end:    
+        PUSH DE             ; push Result
+        EX DE,HL            ; TOS=remainder             
+        JP (IY)
 
 ; end a word array
-arrEnd:                     ;= 27
+arrEnd:                         ;=27
         EXX
         CALL rpop               ; DE = start of array
         PUSH HL

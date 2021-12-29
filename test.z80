@@ -15,6 +15,8 @@
     .org $4000
 
 testsStart:
+
+
     test "1", 1
     test "0", 0
     test "10", 10
@@ -32,10 +34,10 @@ testsStart:
     test "1_ 2+",1
     test "1_~",0
     test "2 3*", 6
+    test "5 2/'", 2
+    test "5 2/$ '", 1
     test "3 5&", 1
     test "3 5|", 7
-    test "1\\_", 0
-    test "1_\\_", 1
     test "1 2 3'+", 3
     call enter
     .cstr "1 3",$22,"+"
@@ -75,28 +77,19 @@ testsStart:
     test "0 2(\\i@+)", 1
     test "0 3(\\i@+)", 3
     test "0 2(2(\\i@\\j@++))", 4
+    test "0t! 10(1t\\+) t@",10
 
     CALL printStr
     .cstr "Done!!\r\n"
     HALT
 
-    test "100 0(6)", 100
-    test "100 1(6)", 6
-    test "2(6)+", 12
-    test "1(\\i@)", 0
-    test "1(1(\\i@ \\j@+))", 0
-    test "2(2(\\i@ \\j@))+++++++", 4
-
     test "0\\(100)(200)",200
     test "1\\(100)(200)",100
 
-    test "0t! 10(1t\\+) t@",10
     test "0t! 10(\\i@ 4>\\B \\i@ 1t\\+) t@",5
     test "100a! 1 a\\+ a@", 101
-
     test "0t! [1 2 3] $ a! ( a@ \\i@ {+ @ t\\+ ) t@", 6
 
-    
     CALL enter
     DB "0 t!"                           ; total = 0
     DB "[1 2 3 4 5]"                    ; declare array, returns address length
