@@ -40,7 +40,7 @@ vHeapPtr:   DS 2                ; h
             DS 2                ; y
             DS 2                ; z
 
-            DS 2                ; 
+vNesting    DS 2                ; 
 vByteMode:  DS 2                ; 
             DS $30
 tbPtr:      DS 2                ; reserved for tests

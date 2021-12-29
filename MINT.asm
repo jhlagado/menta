@@ -88,6 +88,7 @@ interpret:
         LD (vTIBPtr),BC
 
 interpret2:                     ; calc nesting (a macro might have changed it)
+        PUSH DE                 ; preserve TOS
         LD E,0                  ; initilize nesting value
         PUSH BC                 ; save offset into TIB, 
                                 ; BC is also the count of chars in TIB
@@ -142,13 +143,14 @@ waitchar3:
         INC BC
         INC BC
         CALL crlf               ; echo character to screen
-        LD A,E                  ; if zero nesting append and ETX after \r
+        LD A,E                  ; if zero nesting append an ETX after \r
         OR A
         JR NZ,waitchar
         LD (HL),$03             ; store end of text ETX in text buffer 
         INC BC
 
-waitchar4:    
+waitchar4:
+        POP DE                  ; restore TOS
         LD (vTIBPtr),BC
         EXX
         LD BC,TIB               ; Instructions stored on heap at address HERE
@@ -561,7 +563,7 @@ arrEnd_:
         JP arrEnd        
 
 begin_:     
-        JP (IY)        
+        JP begin        
 
 call_:
         EXX
@@ -725,7 +727,7 @@ mul_:
         JP mul        
 
 again_:     
-        JP (IY)        
+        JP again        
 
 str_:                       
         JP (IY)        
@@ -733,28 +735,6 @@ str_:
 ;*******************************************************************
 ; Page 5 primitive routines 
 ;*******************************************************************
-mul:    ; 19
-        POP  HL             ; HL=NOS DE=TOS
-        PUSH BC             ; Preserve the IP
-        LD B,H              ; BC = 2nd value
-        LD C,L
-        LD HL,0
-        LD A,16
-mul1:
-        ADD HL,HL
-        RL E
-        RL D
-        JR NC,mul2          
-        ADD HL,BC
-        JR NC,mul2          
-        INC DE
-mul2:
-        DEC A
-        JR NZ,mul1
-		POP BC				; Restore the IP
-        EX DE,HL
-		JP (IY)
-
 ; **************************************************************************
 ; Alt code primitives
 ; **************************************************************************
@@ -831,7 +811,16 @@ sysVar_:
         JP var1
 
 i_:
-        JP (IY)        
+        LD HL,0                 ; loop stackframe offset
+i1:
+        PUSH DE                 ; push down TOS
+        EXX
+        PUSH DE                 ; save RSP (loopVar)
+        EXX
+        POP DE                  ; DE=RSP
+        ADD HL,DE               ; HL=RSP+offset
+        EX DE,HL                ; TOS=RSP+offset
+        JP (IY)
 
 incr_:
         POP HL                  ; DE=addr HL=incr
@@ -849,7 +838,8 @@ inPort_:
         JP (IY)        
 
 j_:
-        JP (IY)        
+        LD HL,6
+        JR i1
 
 key_:
         JP (IY)        
@@ -885,6 +875,28 @@ editDef_:
 ;*******************************************************************
 ; Commands continued
 ;*******************************************************************
+mul:    ; 19
+        POP  HL             ; HL=NOS DE=TOS
+        PUSH BC             ; Preserve the IP
+        LD B,H              ; BC = 2nd value
+        LD C,L
+        LD HL,0
+        LD A,16
+mul1:
+        ADD HL,HL
+        RL E
+        RL D
+        JR NC,mul2          
+        ADD HL,BC
+        JR NC,mul2          
+        INC DE
+mul2:
+        DEC A
+        JR NZ,mul1
+		POP BC				; Restore the IP
+        EX DE,HL
+		JP (IY)
+
 
 ; end a word array
 arrEnd:                     ;= 27
@@ -908,6 +920,29 @@ arrEnd2:
         EX DE,HL                ; DE=length 
         LD IY,NEXT              ; restore IY
         JP (IY)                 ; hardwired to NEXT
+
+def:                            ; Create a colon definition
+        EXX
+        INC BC
+        LD  A,(BC)              ; Get the next character
+        CALL lookupDef
+        PUSH DE                 ; save return SP
+        LD DE,(vHeapPtr)        ; start of defintion  
+        LD (HL),E               ; Save low byte of address in CFA
+        INC HL              
+        LD (HL),D               ; Save high byte of address in CFA+1
+        EX DE,HL                ; HL=HeapPtr
+        POP DE                  ; restore return SP
+def1:                           ; Skip to end of definition   
+        INC BC                  ; Point to next character
+        LD A,(BC)               ; Get the next character
+        LD (HL),A               ; write to definition
+        INC HL
+        CP ";"                  ; Is it a semicolon 
+        JR NZ, def1             ; end the definition
+        LD (vHeapPtr),HL        ; bump heap ptr to after definiton
+        EXX
+        JP (IY)       
 
 ; ********************************************************************************
 ; Number Handling Routine - converts numeric ascii string to a 16-bit number in HL
@@ -1055,29 +1090,6 @@ printdec2:
         SBC HL,DE
         JP putchar
 
-def:                            ; Create a colon definition
-        EXX
-        INC BC
-        LD  A,(BC)              ; Get the next character
-        CALL lookupDef
-        PUSH DE                 ; save return SP
-        LD DE,(vHeapPtr)        ; start of defintion  
-        LD (HL),E               ; Save low byte of address in CFA
-        INC HL              
-        LD (HL),D               ; Save high byte of address in CFA+1
-        EX DE,HL                ; HL=HeapPtr
-        POP DE                  ; restore return SP
-def1:                           ; Skip to end of definition   
-        INC BC                  ; Point to next character
-        LD A,(BC)               ; Get the next character
-        LD (HL),A               ; write to definition
-        INC HL
-        CP ";"                  ; Is it a semicolon 
-        JR NZ, def1             ; end the definition
-        LD (vHeapPtr),HL        ; bump heap ptr to after definiton
-        EXX
-        JP (IY)       
-
 ; **************************************************************************             
 ; calculate nesting value
 ; A is char to be tested, 
@@ -1088,19 +1100,21 @@ def1:                           ; Skip to end of definition
 ; limited to 127 levels
 ; **************************************************************************             
 
-nesting:                        ;= 44
-        CP '`'
-        JR NZ,nesting1
-        BIT 7,E
-        JR Z,nesting1a
-        RES 7,E
-        RET
-nesting1a: 
-        SET 7,E
-        RET
-nesting1:
+nesting:                        ;= 
         BIT 7,E             
-        RET NZ             
+        JR NZ,nesting1
+        CP '`'
+        JR Z, nesting0
+        JR nesting1a
+nesting1:
+        CP '`'
+        JR NZ,nesting1a
+nesting0:
+        LD A,$80
+        XOR E                 ; flip bit 7
+        LD E,A
+        RET 
+nesting1a:
         CP ':'
         JR Z,nesting2
         CP '['
@@ -1109,7 +1123,7 @@ nesting1:
         JR NZ,nesting3
 nesting2:
         INC E
-        RET
+        RET 
 nesting3:
         CP ';'
         JR Z,nesting4
@@ -1120,4 +1134,77 @@ nesting3:
 nesting4:
         DEC E
         RET 
-        
+
+; *************************************
+; Loop Handling Code
+; *************************************
+        	                        ;= 23                     
+begin:                              ; Left parentesis begins a loop
+        LD A,E                      ; zero?
+        OR D
+        JR Z,begin1                 ; if false skip to closing brace
+        PUSH DE                     ; save loop limit
+        EXX
+        LD HL,BC                    ; create loop stackframe
+        CALL rpush                  ; -> loopAddress
+        POP HL                      ; pop saved loop limit
+        CALL rpush                  ; -> loopLimit
+        LD HL,0                     ; inital value
+        CALL rpush                  ; -> loopVar
+        JR begin3
+
+begin1:
+        EXX
+        PUSH DE                     ; preserve RSP
+        LD E,1                      ; initalise nesting (include opening "(")
+begin2:
+        INC BC                      ; inc IP
+        LD A,(BC)                   ; read next char
+        CALL nesting                ; calc nesting
+        XOR A                       
+        OR E
+        JR NZ,begin2                ; loop until nesting 0 
+        POP DE                      ; restore RSP
+begin3:
+        EXX
+        POP DE                      ; consume TOS
+        JP (IY)
+
+again:   
+        EXX
+        CALL rpop                   ; HL=loopVar 
+        LD A,H                      ; check for -1 ($FF) (IFTEMode)
+        AND L
+        INC A
+        JR NZ,again1
+        EXX                         
+        PUSH DE                     ; IFTEMode
+        LD D,0                      ; return FALSE
+        JP (IY)
+again1:                             ; HL=loopVar
+        PUSH BC                     ; save IP
+        LD BC,HL                    ; BC=loopVar
+        CALL rpop                   ; HL=loopLimit 
+        DEC HL                      ; reduce loopLimit by 1
+        OR A
+        SBC HL,BC                   ; (loopLimit-1) - loopVar
+        JR Z,again2                 ; exit if loopVar = loopLimit-1
+        CALL rpop                   ; HL=loopAddress (SP)=IP
+        EX (SP),HL                  ; (SP)=loopAddress HL=IP
+        LD HL,BC                    ; HL=loopVar
+        INC HL                      ; inc loopVar
+        POP BC                      ; BC=loopAddress
+        DEC DE                      ; move RSP to point to loopVar
+        DEC DE
+        DEC DE
+        DEC DE
+        CALL rpush                  ; rpush loopvar, stackFrame restored
+        EXX
+        JP (IY)
+again2:                             ; terminating loop
+        POP BC                      ; restore IP
+        INC DE                      ; remove the stackframe
+        INC DE
+        EXX
+        JP (IY)
+
