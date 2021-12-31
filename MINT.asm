@@ -646,7 +646,7 @@ fetch1:
         JP (IY)        
 
 hex_:   
-        JP (IY)        
+        JP hex        
 
 nop_:   
         JP NEXT                     ; hardwire white space to always go to NEXT (important for arrays)
@@ -690,9 +690,9 @@ shl_:
 shr_:    
         EX DE,HL                
 shr1:
-        SRL H
+        SRL H                       ; div HL by 2
         RR L
-        EX DE,HL                
+        EX DE,HL                    ; result in TOS
         JP (IY)                 
 
 neg_:   
@@ -792,13 +792,13 @@ alt:                                ;=13
         LD L,A
         LD L,(HL)                   
         LD H, msb(altCodePage)            
-        JP (HL)                    
-
+        JP (HL)     
+        
 
 mul:                                ;=25
-        POP  HL                     ; HL=NOS DE=TOS
-        LD B,H                      ; BC = 2nd value
-        LD C,L
+        POP HL                      ; HL=NOS DE=TOS
+        PUSH BC                     ; Preserve the IP
+        LD BC,HL                    ; BC = 2nd value
         LD HL,0
         LD A,16
 mul1:
@@ -813,13 +813,15 @@ mul2:
         DEC A
         JR NZ,mul1
         EX DE,HL
+        POP BC
 		JP (IY)
 
 div:                                ;=29
-        POP BC                      ; BC=NOS DE=TOS
+        POP HL                      ; HL=NOS DE=TOS
+        PUSH BC                     ; Preserve the IP
+        LD BC,HL                    ; BC = 2nd value
         LD HL,0    	                ; zero the remainder
         LD A,16    	                ; loop counter
-
 div1:		                        ; shift the bits from BC (numerator) into HL (accumulator)
         SLA C
         RL B
@@ -828,14 +830,13 @@ div1:		                        ; shift the bits from BC (numerator) into HL (acc
         JR C,div2
         INC C
         JR div3
-
 div2:		                        ; remainder is not >= denominator, so we have to add DE back to HL
         ADD HL,DE
-
 div3:
         DEC A
         JR NZ,div1
         LD DE,BC                    ; result from BC to DE
+        POP BC
         PUSH DE                     ; push Result
         EX DE,HL                    ; TOS=remainder             
         JP (IY)
@@ -999,13 +1000,13 @@ cStore_:
         JP (IY)         
                             
 depth_:
-        LD HL,0
+        LD HL,2
         ADD HL,SP
-        PUSH DE                     ; preserve TOS
+        PUSH DE                     ; push down TOS
         EX DE,HL                    ; DE=SP
-        LD HL,DSTACK                ; HL=start
+        LD HL,DSTACK                ; HL=SP0
         OR A
-        SBC HL,DE                   ; start - SP
+        SBC HL,DE                   ; SP0 - SP
         JP shr1
 
 emit_:
@@ -1236,6 +1237,28 @@ rpop:                               ; 11
         LD H,(IX+0)
         INC IX                  
         RET
+
+hex:                                ;= 26
+        PUSH DE                     ; push down TOS
+	    LD HL,0		    		    ; Clear HL to accept the number
+hex1:
+        INC BC
+        LD A,(BC)				    ; Get the character which is a numeral
+        BIT 6,A                     ; is it uppercase alpha?
+        JR Z, hex2                  ; no a decimal
+        SUB 7                       ; sub 7  to make $A - $F
+hex2:
+        SUB $30                     ; Form decimal digit
+        JP C,num2
+        CP $0F+1
+        JP NC,num2
+        ADD HL,HL                   ; 2X ; Multiply digit(s) in HL by 16
+        ADD HL,HL                   ; 4X
+        ADD HL,HL                   ; 8X
+        ADD HL,HL                   ; 16X     
+        ADD A,L                     ; Add into bottom of HL
+        LD  L,A             
+        JR  hex1
 
 lookupDef:                          ;=20
         SUB "A"  
