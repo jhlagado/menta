@@ -3,6 +3,8 @@ empty_:
 
 backsp_:
         DB "\\c@0=0=(1_\\c\\+`\b \b`);"
+        ; DB "1_\\c\\+`\b \b`;"
+        ; DB ";"
 
 reedit_:
         DB "\\e\\@\\Z;"
